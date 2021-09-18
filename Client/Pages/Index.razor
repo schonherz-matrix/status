@@ -1,7 +1,123 @@
 ﻿@page "/"
+@inject NavigationManager NavigationManager
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.SignalR.Client
+@using Status.Shared
+@implements Status.Shared.IStatusClient
 
-<h1>Hello, world!</h1>
+<h1>Schönherz Mátrix status</h1>
 
-Welcome to your new app.
+<h2>Overall progress</h2>
+@onlineRoomCount / @roomCount
 
-<SurveyPrompt Title="How is Blazor working for you?" />
+<div class="progress">
+    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: @percent%;" aria-valuenow="@percent" aria-valuemin="0" aria-valuemax="100">@percent%</div>
+</div>
+
+<h2>Room statuses</h2>
+<table class="table table-bordered table-hover">
+    <caption>Room statuses</caption>
+    <thead>
+    <tr>
+        <th scope="col" class="table-secondary">#</th>
+        @for (var i = 5; i < 13; i++)
+        {
+            <th scope="col" class="table-secondary">@i</th>
+        }
+    </tr>
+    </thead>
+    <tbody>
+    @for (var row = 18; row > 5; row--)
+    {
+        <tr>
+            <th scope="row" class="table-secondary">@row</th>
+            @for (var col = 5; col < 13; col++)
+            {
+                var roomId = row * 100 + col;
+                <td class="@GetStatusClass(roomId) text-center">@roomId</td>
+            }
+        </tr>
+    }
+    </tbody>
+</table>
+
+<h2>Status legend</h2>
+<table class="table table-sm table-bordered">
+    <caption>Status legend</caption>
+    <thead>
+    <tr>
+        <th scope="col" class="table-secondary">#</th>
+        <th scope="col" class="table-secondary">Room</th>
+        <th scope="col" class="table-secondary">Color meaning</th>
+    </tr>
+    </thead>
+    <tbody>
+
+    @foreach (var i in muebStatusToCssClass)
+    {
+        <tr>
+            <th scope="row" class="table-secondary">Level</th>
+            <td class="@i.Value text-center">Room number</td>
+            <td>@i.Key</td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+@code
+{
+    private static readonly Dictionary<MuebStatus, string> muebStatusToCssClass = new()
+    {
+        {MuebStatus.Offline, "table-warning"},
+        {MuebStatus.Online, "table-success"},
+        {MuebStatus.IpConflict, "table-danger"},
+        {MuebStatus.PwmPanelDisabled, "table-dark"}
+    };
+    
+    private static readonly int roomCount = 104;
+
+    private HubConnection hubConnection;
+    private Dictionary<int, MuebStatus> roomStatuses = new();
+    private int percent;
+    private int onlineRoomCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/status"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<Dictionary<int, MuebStatus>>(nameof(ShowRoomStatuses), ShowRoomStatuses);
+
+        await hubConnection.StartAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection != null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    private string GetStatusClass(int roomId)
+    {
+        if (roomStatuses.TryGetValue(roomId, out var roomStatus))
+        {
+            return muebStatusToCssClass[roomStatus];
+        }
+
+        return "table-light";
+    }
+
+    public Task ShowRoomStatuses(Dictionary<int, MuebStatus> rs)
+    {
+        roomStatuses = rs;
+        onlineRoomCount = rs.Count(x => x.Value == MuebStatus.Online);
+        percent = (int) MathF.Round((float)onlineRoomCount / roomCount * 100, 0);
+        StateHasChanged();
+        
+        return Task.CompletedTask;
+    }
+}

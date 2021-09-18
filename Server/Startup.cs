@@ -1,14 +1,14 @@
+using System.Linq;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.HttpsPolicy;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System.Linq;
 using Status.Server.Data;
+using Status.Server.Hubs;
 using Status.Server.Models;
 
 namespace Status.Server
@@ -29,6 +29,9 @@ namespace Status.Server
             services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(
                     Configuration.GetConnectionString("DefaultConnection")));
+            services.AddDbContext<SchmatrixDbContext>(options =>
+                options.UseNpgsql(Configuration.GetConnectionString("SchmatrixConnection"))
+                    .UseSnakeCaseNamingConvention());
 
             services.AddDatabaseDeveloperPageExceptionFilter();
 
@@ -41,13 +44,24 @@ namespace Status.Server
             services.AddAuthentication()
                 .AddIdentityServerJwt();
 
+            services.AddSignalR();
             services.AddControllersWithViews();
             services.AddRazorPages();
+            services.AddResponseCompression(opts =>
+            {
+                opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+                    new[] {"application/octet-stream"});
+            });
+
+            services.AddSignalR();
+            services.AddHostedService<MuebStatusWorker>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            app.UseResponseCompression();
+
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -75,6 +89,7 @@ namespace Status.Server
             {
                 endpoints.MapRazorPages();
                 endpoints.MapControllers();
+                endpoints.MapHub<StatusHub>("/hubs/status");
                 endpoints.MapFallbackToFile("index.html");
             });
         }
