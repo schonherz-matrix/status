@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
@@ -55,7 +56,7 @@ namespace Status
 
                             try
                             {
-                                await _udpClient.SendAsync(new byte[] {0x0E}, 1, ipEndPoint);
+                                await _udpClient.SendAsync(Encoding.ASCII.GetBytes("SEM\x0E"), 4, ipEndPoint);
 
                                 var panelStates = _udpClient.Receive(ref ipEndPoint);
                                 if (panelStates.Length == 2)

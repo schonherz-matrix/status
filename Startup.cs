@@ -45,6 +45,7 @@ namespace Status
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
+                app.UseCors("CorsPolicy");
             }
             else
             {
@@ -58,8 +59,6 @@ namespace Status
             if (!env.IsDevelopment()) app.UseSpaStaticFiles();
 
             app.UseRouting();
-
-            app.UseCors("CorsPolicy");
 
             app.UseEndpoints(endpoints =>
             {
