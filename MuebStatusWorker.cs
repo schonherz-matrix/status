@@ -56,7 +56,7 @@ namespace Status
 
                             try
                             {
-                                await _udpClient.SendAsync(Encoding.ASCII.GetBytes("SEM\x0E"), 4, ipEndPoint);
+                                await _udpClient.SendAsync(Encoding.ASCII.GetBytes("SEM\x0F"), 4, ipEndPoint);
 
                                 var panelStates = _udpClient.Receive(ref ipEndPoint);
                                 if (panelStates.Length == 2)
