@@ -17,7 +17,7 @@ namespace Status.Hubs
     {
         Offline,
         Online,
-        PwmPanelDisabled,
+        PwmPanelOffline,
         IpConflict
     }
 }

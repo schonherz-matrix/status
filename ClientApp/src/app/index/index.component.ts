@@ -4,7 +4,7 @@ import * as signalR from '@microsoft/signalr';
 enum MuebStatus {
   Offline,
   Online,
-  PwmPanelDisabled,
+  PwmPanelOffline,
   IpConflict
 }
 
@@ -24,7 +24,7 @@ export class IndexComponent implements OnInit {
 
   readonly roomStatusToCssClass: Map<MuebStatus, string> = new Map<MuebStatus, string>([[MuebStatus.Offline, 'table-warning'],
     [MuebStatus.Online, 'table-success'],
-    [MuebStatus.PwmPanelDisabled, 'table-dark'],
+    [MuebStatus.PwmPanelOffline, 'table-dark'],
     [MuebStatus.IpConflict, 'table-danger']
   ]);
   readonly MuebStatus = MuebStatus;

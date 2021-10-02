@@ -61,8 +61,8 @@ namespace Status
                                 var panelStates = _udpClient.Receive(ref ipEndPoint);
                                 if (panelStates.Length == 2)
                                 {
-                                    if (panelStates[0] == 0 || panelStates[1] == 0)
-                                        status = MuebStatus.PwmPanelDisabled;
+                                    if (panelStates[0] != 3 || panelStates[1] != 3)
+                                        status = MuebStatus.PwmPanelOffline;
                                     else
                                         status = MuebStatus.Online;
                                 }
