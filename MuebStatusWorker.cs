@@ -1,94 +1,85 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Status.Data;
 using Status.Hubs;
 
-namespace Status
+namespace Status;
+
+public class MuebStatusWorker : BackgroundService
 {
-    public class MuebStatusWorker : BackgroundService
+    private readonly ILogger<BackgroundService> _logger;
+    private readonly IHubContext<StatusHub, IStatusClient> _roomStatusHub;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly UdpClient _udpClient = new();
+
+    public MuebStatusWorker(ILogger<BackgroundService> logger,
+        IHubContext<StatusHub, IStatusClient> roomStatusHub, IServiceScopeFactory scopeFactory)
     {
-        private readonly ILogger<BackgroundService> _logger;
-        private readonly IHubContext<StatusHub, IStatusClient> _roomStatusHub;
-        private readonly IServiceScopeFactory _scopeFactory;
-        private readonly UdpClient _udpClient;
+        _logger = logger;
+        _roomStatusHub = roomStatusHub;
+        _scopeFactory = scopeFactory;
+        _udpClient.Client.ReceiveTimeout = 100;
+    }
 
-        public MuebStatusWorker(ILogger<BackgroundService> logger,
-            IHubContext<StatusHub, IStatusClient> roomStatusHub, IServiceScopeFactory scopeFactory)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
         {
-            _logger = logger;
-            _roomStatusHub = roomStatusHub;
-            _scopeFactory = scopeFactory;
-            _udpClient = new UdpClient();
-            _udpClient.Client.ReceiveTimeout = 100;
-        }
+            _logger.LogInformation("Worker running at: {Time}", DateTime.Now);
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-        {
-            while (!stoppingToken.IsCancellationRequested)
+            using (var scope = _scopeFactory.CreateScope())
             {
-                _logger.LogInformation("Worker running at: {Time}", DateTime.Now);
+                var context = scope.ServiceProvider.GetRequiredService<SchmatrixDbContext>();
 
-                using (var scope = _scopeFactory.CreateScope())
+                var roomStatuses = new Dictionary<int, MuebStatus>();
+                foreach (var muebWithIp in await context.MuebWithIps.ToListAsync())
                 {
-                    var context = scope.ServiceProvider.GetRequiredService<SchmatrixDbContext>();
-
-                    var roomStatuses = new Dictionary<int, MuebStatus>();
-                    foreach (var muebWithIp in await context.MuebWithIps.ToListAsync())
+                    var status = MuebStatus.Offline;
+                    if (muebWithIp.IpConflict)
                     {
-                        var status = MuebStatus.Offline;
-                        if (muebWithIp.IpConflict)
-                        {
-                            status = MuebStatus.IpConflict;
-                        }
-                        else
-                        {
-                            var ipEndPoint = new IPEndPoint(muebWithIp.IpAddress, 50000);
+                        status = MuebStatus.IpConflict;
+                    }
+                    else
+                    {
+                        var ipEndPoint = new IPEndPoint(muebWithIp.IpAddress, 50000);
 
-                            try
+                        try
+                        {
+                            await _udpClient.SendAsync(Encoding.ASCII.GetBytes("SEM\x00\x0F"), 4, ipEndPoint);
+
+                            var panelStates = _udpClient.Receive(ref ipEndPoint);
+                            if (panelStates.Length == 2)
                             {
-                                await _udpClient.SendAsync(Encoding.ASCII.GetBytes("SEM\x00\x0F"), 4, ipEndPoint);
-
-                                var panelStates = _udpClient.Receive(ref ipEndPoint);
-                                if (panelStates.Length == 2)
-                                {
-                                    if (panelStates[0] != 3 || panelStates[1] != 3)
-                                        status = MuebStatus.PwmPanelOffline;
-                                    else
-                                        status = MuebStatus.Online;
-                                }
+                                if (panelStates[0] != 3 || panelStates[1] != 3)
+                                    status = MuebStatus.PwmPanelOffline;
                                 else
-                                {
-                                    // Should not happen
-                                    _logger.LogError(
-                                        "Invalid panel state response with length: {Length} at {IpAddress}",
-                                        panelStates.Length, muebWithIp.IpAddress);
-                                }
+                                    status = MuebStatus.Online;
                             }
-                            catch
+                            else
                             {
-                                _logger.LogInformation("MUEB {MuebId} with {Ip} not responding at {CurrentTime}",
-                                    muebWithIp.MuebId, muebWithIp.IpAddress, DateTime.Now);
+                                // Should not happen
+                                _logger.LogError(
+                                    "Invalid panel state response with length: {Length} at {IpAddress}",
+                                    panelStates.Length, muebWithIp.IpAddress);
                             }
                         }
-
-                        roomStatuses.Add(muebWithIp.RoomId, status);
+                        catch
+                        {
+                            _logger.LogInformation("MUEB {MuebId} with {Ip} not responding at {CurrentTime}",
+                                muebWithIp.MuebId, muebWithIp.IpAddress, DateTime.Now);
+                        }
                     }
 
-                    await _roomStatusHub.Clients.All.ShowRoomStatuses(roomStatuses);
+                    roomStatuses.Add(muebWithIp.RoomId, status);
                 }
 
-                await Task.Delay(1000);
+                await _roomStatusHub.Clients.All.ShowRoomStatuses(roomStatuses);
             }
+
+            await Task.Delay(1000);
         }
     }
 }
