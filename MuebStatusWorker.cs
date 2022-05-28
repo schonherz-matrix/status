@@ -48,7 +48,8 @@ public class MuebStatusWorker : BackgroundService
 
                         try
                         {
-                            await _udpClient.SendAsync(Encoding.ASCII.GetBytes("SEM\x00\x0F"), 4, ipEndPoint);
+                            var command = Encoding.ASCII.GetBytes("SEM\x00\x0F");
+                            await _udpClient.SendAsync(command, command.Length, ipEndPoint);
 
                             var panelStates = _udpClient.Receive(ref ipEndPoint);
                             if (panelStates.Length == 2)
